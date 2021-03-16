@@ -15,16 +15,16 @@ limitations under the License.
 
 package com.example.myfaceapp.tflite;
 
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.res.AssetFileDescriptor;
 import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.RectF;
 import android.os.Trace;
 import android.util.Pair;
-
 import com.example.myfaceapp.env.Logger;
-
-
+import com.google.gson.Gson;
 import org.tensorflow.lite.Interpreter;
 
 import java.io.BufferedReader;
@@ -90,19 +90,30 @@ public class TFLiteObjectDetectionAPIModel
 
   private float[][] embeedings;
 
+
+
+
+
   private ByteBuffer imgData;
 
   private Interpreter tfLite;
+  Gson gson = new Gson();
 
-// Face Mask Detector Output
+
+
+  // Face Mask Detector Output
   private float[][] output;
 
   private HashMap<String, Recognition> registered = new HashMap<>();
-  public void register(String name, Recognition rec) {
-      registered.put(name, rec);
+  public void register(String name, Recognition rec, SharedPreferences pref) {
+    registered.put(name, rec);
+
+    String hashMapString = gson.toJson(registered);
+    pref.edit().putString("hashString", hashMapString).apply();
+
   }
 
-  private TFLiteObjectDetectionAPIModel() {}
+  private TFLiteObjectDetectionAPIModel() { }
 
   /** Memory-map the model file in Assets. */
   private static MappedByteBuffer loadModelFile(AssetManager assets, String modelFilename)
@@ -161,7 +172,7 @@ public class TFLiteObjectDetectionAPIModel
     } else {
       numBytesPerChannel = 4; // Floating point
     }
-    d.imgData = ByteBuffer.allocateDirect(1 * d.inputSize * d.inputSize * 3 * numBytesPerChannel);
+    d.imgData = ByteBuffer.allocateDirect(d.inputSize * d.inputSize * 3 * numBytesPerChannel);
     d.imgData.order(ByteOrder.nativeOrder());
     d.intValues = new int[d.inputSize * d.inputSize];
 
@@ -260,7 +271,7 @@ public class TFLiteObjectDetectionAPIModel
     String label = "?";
 
     if (registered.size() > 0) {
-        //LOGGER.i("dataset SIZE: " + registered.size());
+
         final Pair<String, Float> nearest = findNearest(embeedings[0]);
         if (nearest != null) {
 

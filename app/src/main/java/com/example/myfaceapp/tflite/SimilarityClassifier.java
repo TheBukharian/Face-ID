@@ -15,6 +15,8 @@ limitations under the License.
 
 package com.example.myfaceapp.tflite;
 
+import android.annotation.SuppressLint;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.RectF;
 import java.util.List;
@@ -22,7 +24,7 @@ import java.util.List;
 /** Generic interface for interacting with different recognition engines. */
 public interface SimilarityClassifier {
 
-  void register(String name, Recognition recognition);
+  void register(String name, Recognition recognition, SharedPreferences sher);
 
   List<Recognition> recognizeImage(Bitmap bitmap, boolean getExtra);
 
@@ -100,6 +102,7 @@ public interface SimilarityClassifier {
       this.location = location;
     }
 
+    @SuppressLint("DefaultLocale")
     @Override
     public String toString() {
       String resultString = "";

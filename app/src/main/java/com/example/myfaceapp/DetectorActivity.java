@@ -17,7 +17,9 @@
 package com.example.myfaceapp;
 
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.DialogInterface;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.Config;
 import android.graphics.Canvas;
@@ -78,6 +80,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   private static final int TF_OD_API_INPUT_SIZE = 112;
   private static final boolean TF_OD_API_IS_QUANTIZED = false;
   private static final String TF_OD_API_MODEL_FILE = "mobile_face_net.tflite";
+  SharedPreferences prefs = getApplicationContext().getSharedPreferences("MyPref", 0); // 0 - for private mode
 
 
   private static final String TF_OD_API_LABELS_FILE = "file:///android_asset/labelmap.txt";
@@ -393,7 +396,8 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
           if (name.isEmpty()) {
               return;
           }
-          detector.register(name, rec);
+
+          detector.register(name, rec, prefs);
           //knownFaces.put(name, rec);
           dlg.dismiss();
       }
@@ -434,11 +438,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     paint.setStrokeWidth(2.0f);
 
     float minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
-    switch (MODE) {
-      case TF_OD_API:
-        minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
-        break;
-    }
+
 
     final List<SimilarityClassifier.Recognition> mappedRecognitions =
             new LinkedList<SimilarityClassifier.Recognition>();
@@ -570,9 +570,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
     }
 
-    //    if (saved) {
-//      lastSaved = System.currentTimeMillis();
-//    }
+
 
     updateResults(currTimestamp, mappedRecognitions);
 
