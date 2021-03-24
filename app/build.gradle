@@ -52,7 +52,16 @@ dependencies {
     implementation 'com.google.code.gson:gson:2.8.6'
 
 
+    // koin version
+    def koin_version = '2.2.2'
+
+    // Koin for Android
+    implementation "org.koin:koin-android:$koin_version"
+    // or Koin for view model features
+    implementation "org.koin:koin-android-viewmodel:$koin_version"
 
     // added MLKit dependencies for face detector
     implementation 'com.google.mlkit:face-detection:16.0.5'
+
+    implementation 'com.aliassadi:power-preference-lib:2.0.0'
 }

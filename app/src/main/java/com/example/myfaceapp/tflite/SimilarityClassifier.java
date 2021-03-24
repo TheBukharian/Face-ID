@@ -19,12 +19,21 @@ import android.annotation.SuppressLint;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.RectF;
+import android.os.Build;
+import android.util.Log;
+
+import androidx.annotation.RequiresApi;
+
+import com.preference.PowerPreference;
+import com.preference.Preference;
+
+import java.io.Serializable;
 import java.util.List;
 
 /** Generic interface for interacting with different recognition engines. */
 public interface SimilarityClassifier {
 
-  void register(String name, Recognition recognition, SharedPreferences sher);
+  void register(String name, Recognition recognition);
 
   List<Recognition> recognizeImage(Bitmap bitmap, boolean getExtra);
 
@@ -39,7 +48,7 @@ public interface SimilarityClassifier {
   void setUseNNAPI(boolean isChecked);
 
   /** An immutable result returned by a Classifier describing what was recognized. */
-  public class Recognition {
+  public class Recognition  {
     /**
      * A unique identifier for what has been recognized. Specific to the class, not the instance of
      * the object.
@@ -60,6 +69,11 @@ public interface SimilarityClassifier {
     private Integer color;
     private Bitmap crop;
 
+
+
+
+
+
     public Recognition(
             final String id, final String title, final Float distance, final RectF location) {
       this.id = id;
@@ -72,8 +86,12 @@ public interface SimilarityClassifier {
     }
 
     public void setExtra(Object extra) {
-        this.extra = extra;
+
+
+
+      this.extra = extra;
     }
+
     public Object getExtra() {
         return this.extra;
     }
@@ -102,7 +120,6 @@ public interface SimilarityClassifier {
       this.location = location;
     }
 
-    @SuppressLint("DefaultLocale")
     @Override
     public String toString() {
       String resultString = "";
@@ -122,8 +139,13 @@ public interface SimilarityClassifier {
         resultString += location + " ";
       }
 
-      return resultString.trim();
+      return "extra"+extra.toString();
     }
+
+
+
+
+
 
     public Integer getColor() {
       return this.color;
@@ -137,4 +159,9 @@ public interface SimilarityClassifier {
       return this.crop;
     }
   }
+
+
+
+
+
 }

@@ -33,6 +33,7 @@ import android.hardware.camera2.CameraCharacteristics;
 import android.media.ImageReader.OnImageAvailableListener;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.util.Log;
 import android.util.Size;
 import android.util.TypedValue;
 import android.view.LayoutInflater;
@@ -51,15 +52,22 @@ import com.example.myfaceapp.tflite.TFLiteObjectDetectionAPIModel;
 import com.example.myfaceapp.tracking.MultiBoxTracker;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.google.mlkit.vision.common.InputImage;
 import com.google.mlkit.vision.face.Face;
 import com.google.mlkit.vision.face.FaceDetection;
 import com.google.mlkit.vision.face.FaceDetector;
 import com.google.mlkit.vision.face.FaceDetectorOptions;
+import com.preference.PowerPreference;
+import com.preference.Preference;
 
 import java.io.IOException;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
 
 /**
@@ -80,7 +88,6 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   private static final int TF_OD_API_INPUT_SIZE = 112;
   private static final boolean TF_OD_API_IS_QUANTIZED = false;
   private static final String TF_OD_API_MODEL_FILE = "mobile_face_net.tflite";
-  SharedPreferences prefs = getApplicationContext().getSharedPreferences("MyPref", 0); // 0 - for private mode
 
 
   private static final String TF_OD_API_LABELS_FILE = "file:///android_asset/labelmap.txt";
@@ -107,6 +114,8 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   private Bitmap croppedBitmap = null;
   private Bitmap cropCopyBitmap = null;
 
+
+
   private boolean computingDetection = false;
   private boolean addPending = false;
   //private boolean adding = false;
@@ -131,12 +140,62 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
   private FloatingActionButton fabAdd;
 
+
+
+  GsonBuilder gsonb = new GsonBuilder();
+  Gson mGson = gsonb.create();
   //private HashMap<String, Classifier.Recognition> knownFaces = new HashMap<>();
 
+  public boolean writeJSON(SimilarityClassifier c, String yourSettingName) {
+    try {
+      String writeValue = mGson.toJson(c);
+      PowerPreference.getDefaultFile().putString(yourSettingName, writeValue);
+      return true;
+    }
+    catch(Exception e)
+    {
+      return false;
+    }
+  }
+
+  public SimilarityClassifier readJSON(String yourSettingName) {
+    String loadValue = PowerPreference.getDefaultFile().getString(yourSettingName, "");
+    return mGson.fromJson(loadValue, SimilarityClassifier.class);
+  }
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
+
+
+    try {
+
+      //todo
+      if (readJSON("TF") == null){
+        detector = TFLiteObjectDetectionAPIModel.create(
+                getAssets(),
+                TF_OD_API_MODEL_FILE,
+                TF_OD_API_LABELS_FILE,
+                TF_OD_API_INPUT_SIZE,
+                TF_OD_API_IS_QUANTIZED,DetectorActivity.this);
+        writeJSON(detector,"TF");
+
+      }else {
+        detector = readJSON("TF");
+      }
+
+      //cropSize = TF_OD_API_INPUT_SIZE;
+    } catch (final IOException e) {
+      e.printStackTrace();
+      LOGGER.e(e, "Exception initializing classifier!");
+      Toast toast =
+              Toast.makeText(
+                      getApplicationContext(), "Classifier could not be initialized", Toast.LENGTH_SHORT);
+      toast.show();
+      finish();
+    }
+
+
 
     fabAdd = findViewById(R.id.fab_add);
     fabAdd.setOnClickListener(new View.OnClickListener() {
@@ -147,8 +206,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     });
 
     // Real-time contour detection of multiple faces
-    FaceDetectorOptions options =
-            new FaceDetectorOptions.Builder()
+    FaceDetectorOptions options = new FaceDetectorOptions.Builder()
                     .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
                     .setContourMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
                     .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
@@ -184,23 +242,6 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     tracker = new MultiBoxTracker(this);
 
 
-    try {
-      detector = TFLiteObjectDetectionAPIModel.create(
-                      getAssets(),
-                      TF_OD_API_MODEL_FILE,
-                      TF_OD_API_LABELS_FILE,
-                      TF_OD_API_INPUT_SIZE,
-                      TF_OD_API_IS_QUANTIZED);
-      //cropSize = TF_OD_API_INPUT_SIZE;
-    } catch (final IOException e) {
-      e.printStackTrace();
-      LOGGER.e(e, "Exception initializing classifier!");
-      Toast toast =
-              Toast.makeText(
-                      getApplicationContext(), "Classifier could not be initialized", Toast.LENGTH_SHORT);
-      toast.show();
-      finish();
-    }
 
     previewWidth = size.getWidth();
     previewHeight = size.getHeight();
@@ -229,8 +270,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     portraitBmp = Bitmap.createBitmap(targetW, targetH, Config.ARGB_8888);
     faceBmp = Bitmap.createBitmap(TF_OD_API_INPUT_SIZE, TF_OD_API_INPUT_SIZE, Config.ARGB_8888);
 
-    frameToCropTransform =
-            ImageUtils.getTransformationMatrix(
+    frameToCropTransform = ImageUtils.getTransformationMatrix(
                     previewWidth, previewHeight,
                     cropW, cropH,
                     sensorOrientation, MAINTAIN_ASPECT);
@@ -397,8 +437,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
               return;
           }
 
-          detector.register(name, rec, prefs);
-          //knownFaces.put(name, rec);
+          detector.register(name, rec);
           dlg.dismiss();
       }
     });
@@ -412,7 +451,6 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     tracker.trackResults(mappedRecognitions, currTimestamp);
     trackingOverlay.postInvalidate();
     computingDetection = false;
-    //adding = false;
 
 
     if (mappedRecognitions.size() > 0) {
@@ -439,12 +477,8 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
     float minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
 
+    final List<SimilarityClassifier.Recognition> mappedRecognitions = new LinkedList<>();
 
-    final List<SimilarityClassifier.Recognition> mappedRecognitions =
-            new LinkedList<SimilarityClassifier.Recognition>();
-
-
-    //final List<Classifier.Recognition> results = new ArrayList<>();
 
     // Note this can be done only once
     int sourceW = rgbFrameBitmap.getWidth();
@@ -476,7 +510,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
       //final boolean goodConfidence = result.getConfidence() >= minimumConfidence;
       final boolean goodConfidence = true; //face.get;
-      if (boundingBox != null && goodConfidence) {
+      if (boundingBox != null) {
 
         // maps crop coordinates to original
         cropToFrameTransform.mapRect(boundingBox);
@@ -499,7 +533,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
         String label = "";
         float confidence = -1f;
-        Integer color = Color.BLUE;
+        int color = Color.BLUE;
         Object extra = null;
         Bitmap crop = null;
 
@@ -520,10 +554,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
           SimilarityClassifier.Recognition result = resultsAux.get(0);
 
           extra = result.getExtra();
-//          Object extra = result.getExtra();
-//          if (extra != null) {
-//            LOGGER.i("embeeding retrieved " + extra.toString());
-//          }
+
 
           float conf = result.getDistance();
           if (conf < 1.0f) {
@@ -559,11 +590,13 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
         final SimilarityClassifier.Recognition result = new SimilarityClassifier.Recognition(
                 "0", label, confidence, boundingBox);
 
+
         result.setColor(color);
         result.setLocation(boundingBox);
         result.setExtra(extra);
         result.setCrop(crop);
         mappedRecognitions.add(result);
+
 
       }
 

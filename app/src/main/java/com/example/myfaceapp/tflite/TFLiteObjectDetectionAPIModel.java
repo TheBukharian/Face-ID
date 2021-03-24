@@ -22,25 +22,40 @@ import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.RectF;
 import android.os.Trace;
+import android.util.Log;
 import android.util.Pair;
+
+import com.example.myfaceapp.DetectorActivity;
 import com.example.myfaceapp.env.Logger;
-import com.google.gson.Gson;
+import com.preference.MapStructure;
+import com.preference.PowerPreference;
+import com.preference.Preference;
+
 import org.tensorflow.lite.Interpreter;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.OptionalDataException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Vector;
+
+import static android.content.Context.MODE_PRIVATE;
 
 
 /**
@@ -52,8 +67,7 @@ import java.util.Vector;
  * - https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/detection_model_zoo.md
  * - https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_on_mobile_tensorflowlite.md#running-our-model-on-android
  */
-public class TFLiteObjectDetectionAPIModel
-        implements SimilarityClassifier {
+public class TFLiteObjectDetectionAPIModel implements SimilarityClassifier {
 
   private static final Logger LOGGER = new Logger();
 
@@ -72,6 +86,8 @@ public class TFLiteObjectDetectionAPIModel
   private boolean isModelQuantized;
   // Config values.
   private int inputSize;
+
+  private Map<String,Object> myNewlyReadInMap = new HashMap<>();
   // Pre-allocated buffers.
   private Vector<String> labels = new Vector<String>();
   private int[] intValues;
@@ -88,32 +104,27 @@ public class TFLiteObjectDetectionAPIModel
   // contains the number of detected boxes
   private float[] numDetections;
 
+
+  MapStructure structure = MapStructure.create(HashMap.class, String.class, Recognition.class);
+
   private float[][] embeedings;
-
-
-
-
-
+  Preference powerPreference = PowerPreference.getFileByName("facesHashMap_storage");
   private ByteBuffer imgData;
-
   private Interpreter tfLite;
-  Gson gson = new Gson();
-
-
 
   // Face Mask Detector Output
   private float[][] output;
 
-  private HashMap<String, Recognition> registered = new HashMap<>();
-  public void register(String name, Recognition rec, SharedPreferences pref) {
-    registered.put(name, rec);
+  private  Map<String, Recognition> registered = new HashMap<>();
 
-    String hashMapString = gson.toJson(registered);
-    pref.edit().putString("hashString", hashMapString).apply();
+  public void register(String name, Recognition rec) {
+      registered.put(name, rec);
+      powerPreference.putMap("facesMap",registered);
 
+    Log.d("oobbjj", ""+powerPreference.getMap("facesMap",structure).values());
   }
 
-  private TFLiteObjectDetectionAPIModel() { }
+
 
   /** Memory-map the model file in Assets. */
   private static MappedByteBuffer loadModelFile(AssetManager assets, String modelFilename)
@@ -140,10 +151,11 @@ public class TFLiteObjectDetectionAPIModel
       final String modelFilename,
       final String labelFilename,
       final int inputSize,
-      final boolean isQuantized)
+      final boolean isQuantized,
+      Context context)
       throws IOException {
 
-    final TFLiteObjectDetectionAPIModel d = new TFLiteObjectDetectionAPIModel();
+      final TFLiteObjectDetectionAPIModel d = new TFLiteObjectDetectionAPIModel();
 
     String actualFilename = labelFilename.split("file:///android_asset/")[1];
     InputStream labelsInput = assetManager.open(actualFilename);
@@ -184,25 +196,52 @@ public class TFLiteObjectDetectionAPIModel
     return d;
   }
 
-  // looks for the nearest embeeding in the dataset (using L2 norm)
-  // and retrurns the pair <id, distance>
+
+
+
   private Pair<String, Float> findNearest(float[] emb) {
 
     Pair<String, Float> ret = null;
+
+
+
+    //todo
+
+
+      registered = powerPreference.getMap("facesMap",structure);
+
+
+
+      Log.i("erihgerg","preference:" + powerPreference.getMap("facesMap",structure).values());
+
+
+
     for (Map.Entry<String, Recognition> entry : registered.entrySet()) {
         final String name = entry.getKey();
-        final float[] knownEmb = ((float[][]) entry.getValue().getExtra())[0];
+        final ArrayList<ArrayList<Double>> prefArray = (ArrayList<ArrayList<Double>>) entry.getValue().getExtra();
+        final float[] knownEmb = new float [prefArray.get(0).size()];
+
+        for (int index1 = 0; index1 < prefArray.size(); index1++) {
+            for (int index2 = index1; index2 < prefArray.get(index1).size(); index2++){
+
+                Log.d("kkk", prefArray.get(index1).get(index2).getClass().getSimpleName());
+                float value = ((Double) prefArray.get(index1).get(index2)).floatValue() ;
+                knownEmb[index2] = value;
+
+            }
+      }
+
 
         float distance = 0;
         for (int i = 0; i < emb.length; i++) {
-              float diff = emb[i] - knownEmb[i];
-              distance += diff*diff;
+          float diff = emb[i] - knownEmb[i];
+          distance += diff*diff;
         }
         distance = (float) Math.sqrt(distance);
         if (ret == null || distance < ret.second) {
-            ret = new Pair<>(name, distance);
+          ret = new Pair<>(name, distance);
         }
-    }
+      }
 
     return ret;
 
@@ -257,13 +296,6 @@ public class TFLiteObjectDetectionAPIModel
     //tfLite.runForMultipleInputsOutputs(inputArray, outputMapBack);
     tfLite.runForMultipleInputsOutputs(inputArray, outputMap);
     Trace.endSection();
-
-//    String res = "[";
-//    for (int i = 0; i < embeedings[0].length; i++) {
-//      res += embeedings[0][i];
-//      if (i < embeedings[0].length - 1) res += ", ";
-//    }
-//    res += "]";
 
 
     float distance = Float.MAX_VALUE;

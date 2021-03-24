@@ -29,11 +29,7 @@
             android:layout_alignParentTop="true"
             android:background="#FFFFFF">
 
-            <ImageView
-                android:visibility="visible"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:src="@drawable/tfl2_logo" />
+
 
         </com.google.android.material.appbar.MaterialToolbar>
 
