@@ -16,6 +16,7 @@
 
 package com.example.myfaceapp;
 
+import android.annotation.SuppressLint;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -61,10 +62,12 @@ import com.google.mlkit.vision.face.Face;
 import com.google.mlkit.vision.face.FaceDetection;
 import com.google.mlkit.vision.face.FaceDetector;
 import com.google.mlkit.vision.face.FaceDetectorOptions;
+import com.preference.MapStructure;
 import com.preference.PowerPreference;
 import com.preference.Preference;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -108,6 +111,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   private Integer sensorOrientation;
 
   private SimilarityClassifier detector;
+  private TFLiteObjectDetectionAPIModel TFobj;
 
   private long lastProcessingTimeMs;
   private Bitmap rgbFrameBitmap = null;
@@ -121,6 +125,9 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   //private boolean adding = false;
 
   private long timestamp = 0;
+
+  public Map<String, SimilarityClassifier.Recognition> facesFromPrefs = new HashMap<>();
+
 
   private Matrix frameToCropTransform;
   private Matrix cropToFrameTransform;
@@ -146,51 +153,31 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   Gson mGson = gsonb.create();
   //private HashMap<String, Classifier.Recognition> knownFaces = new HashMap<>();
 
-  public boolean writeJSON(SimilarityClassifier c, String yourSettingName) {
-    try {
-      String writeValue = mGson.toJson(c);
-      PowerPreference.getDefaultFile().putString(yourSettingName, writeValue);
-      return true;
-    }
-    catch(Exception e)
-    {
-      return false;
-    }
-  }
 
-  public SimilarityClassifier readJSON(String yourSettingName) {
-    String loadValue = PowerPreference.getDefaultFile().getString(yourSettingName, "");
-    return mGson.fromJson(loadValue, SimilarityClassifier.class);
-  }
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
+    MapStructure structure = MapStructure.create(HashMap.class, String.class, SimilarityClassifier.Recognition.class);
 
 
-    try {
+    TFobj = new TFLiteObjectDetectionAPIModel();
 
-      //todo
-      if (readJSON("TF") == null){
-        detector = TFLiteObjectDetectionAPIModel.create(
+    try { detector = TFLiteObjectDetectionAPIModel.create(
                 getAssets(),
                 TF_OD_API_MODEL_FILE,
                 TF_OD_API_LABELS_FILE,
                 TF_OD_API_INPUT_SIZE,
-                TF_OD_API_IS_QUANTIZED,DetectorActivity.this);
-        writeJSON(detector,"TF");
+                TF_OD_API_IS_QUANTIZED,DetectorActivity.this,
+            PowerPreference.getFileByName("facesHashMap_storage").getMap("facesMap",TFobj.structure) );
 
-      }else {
-        detector = readJSON("TF");
-      }
 
       //cropSize = TF_OD_API_INPUT_SIZE;
     } catch (final IOException e) {
       e.printStackTrace();
       LOGGER.e(e, "Exception initializing classifier!");
       Toast toast =
-              Toast.makeText(
-                      getApplicationContext(), "Classifier could not be initialized", Toast.LENGTH_SHORT);
+              Toast.makeText(getApplicationContext(), "Classifier could not be initialized", Toast.LENGTH_SHORT);
       toast.show();
       finish();
     }
@@ -198,12 +185,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
 
     fabAdd = findViewById(R.id.fab_add);
-    fabAdd.setOnClickListener(new View.OnClickListener() {
-      @Override
-      public void onClick(View view) {
-        onAddClick();
-      }
-    });
+    fabAdd.setOnClickListener(view -> onAddClick());
 
     // Real-time contour detection of multiple faces
     FaceDetectorOptions options = new FaceDetectorOptions.Builder()
@@ -213,9 +195,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
                     .build();
 
 
-    FaceDetector detector = FaceDetection.getClient(options);
-
-    faceDetector = detector;
+    faceDetector = FaceDetection.getClient(options);
 
 
     //checkWritePermission();
@@ -329,23 +309,19 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     InputImage image = InputImage.fromBitmap(croppedBitmap, 0);
     faceDetector
             .process(image)
-            .addOnSuccessListener(new OnSuccessListener<List<Face>>() {
-              @Override
-              public void onSuccess(List<Face> faces) {
-                if (faces.size() == 0) {
-                  updateResults(currTimestamp, new LinkedList<>());
-                  return;
-                }
-                runInBackground(
-                        new Runnable() {
-                          @Override
-                          public void run() {
-                            onFacesDetected(currTimestamp, faces, addPending);
-                            addPending = false;
-                          }
-                        });
+            .addOnSuccessListener(faces -> {
+              if (faces.size() == 0) {
+                updateResults(currTimestamp, new LinkedList<>());
+                return;
               }
-
+              runInBackground(
+                      new Runnable() {
+                        @Override
+                        public void run() {
+                          onFacesDetected(currTimestamp, faces, addPending);
+                          addPending = false;
+                        }
+                      });
             });
 
 
@@ -364,7 +340,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   // Which detection model to use: by default uses Tensorflow Object Detection API frozen
   // checkpoints.
   private enum DetectorMode {
-    TF_OD_API;
+    TF_OD_API
   }
 
   @Override
@@ -415,6 +391,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
   }
 
+  @SuppressLint("SetTextI18n")
   private void showAddFaceDialog(SimilarityClassifier.Recognition rec) {
 
     AlertDialog.Builder builder = new AlertDialog.Builder(this);
@@ -428,18 +405,15 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     ivFace.setImageBitmap(rec.getCrop());
     etName.setHint("Input name");
 
-    builder.setPositiveButton("OK", new DialogInterface.OnClickListener(){
-      @Override
-      public void onClick(DialogInterface dlg, int i) {
+    builder.setPositiveButton("OK", (dlg, i) -> {
 
-          String name = etName.getText().toString();
-          if (name.isEmpty()) {
-              return;
-          }
+        String name = etName.getText().toString();
+        if (name.isEmpty()) {
+            return;
+        }
 
-          detector.register(name, rec);
-          dlg.dismiss();
-      }
+        detector.register(name, rec);
+        dlg.dismiss();
     });
     builder.setView(dialogLayout);
     builder.show();
@@ -478,6 +452,9 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     float minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
 
     final List<SimilarityClassifier.Recognition> mappedRecognitions = new LinkedList<>();
+
+
+    Log.d("ttrr","!!!!FACE DETECTED!!!!!");
 
 
     // Note this can be done only once

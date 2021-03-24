@@ -87,9 +87,9 @@ public class TFLiteObjectDetectionAPIModel implements SimilarityClassifier {
   // Config values.
   private int inputSize;
 
-  private Map<String,Object> myNewlyReadInMap = new HashMap<>();
+
   // Pre-allocated buffers.
-  private Vector<String> labels = new Vector<String>();
+  private Vector<String> labels = new Vector<>();
   private int[] intValues;
   // outputLocations: array of shape [Batchsize, NUM_DETECTIONS,4]
   // contains the location of detected boxes
@@ -103,25 +103,27 @@ public class TFLiteObjectDetectionAPIModel implements SimilarityClassifier {
   // numDetections: array of shape [Batchsize]
   // contains the number of detected boxes
   private float[] numDetections;
+  DetectorActivity o ;
 
 
-  MapStructure structure = MapStructure.create(HashMap.class, String.class, Recognition.class);
 
-  private float[][] embeedings;
-  Preference powerPreference = PowerPreference.getFileByName("facesHashMap_storage");
+  public MapStructure structure = MapStructure.create(HashMap.class, String.class, Recognition.class);
+
   private ByteBuffer imgData;
   private Interpreter tfLite;
 
   // Face Mask Detector Output
   private float[][] output;
 
-  private  Map<String, Recognition> registered = new HashMap<>();
+  public  Map<String, Recognition> registered = new HashMap<>();
+
+  public TFLiteObjectDetectionAPIModel() {}
 
   public void register(String name, Recognition rec) {
       registered.put(name, rec);
-      powerPreference.putMap("facesMap",registered);
+    PowerPreference.getFileByName("facesHashMap_storage").putMap("facesMap",registered);
 
-    Log.d("oobbjj", ""+powerPreference.getMap("facesMap",structure).values());
+    Log.d("oobbjj", ""+PowerPreference.getFileByName("facesHashMap_storage").getMap("facesMap",structure).values());
   }
 
 
@@ -147,20 +149,31 @@ public class TFLiteObjectDetectionAPIModel implements SimilarityClassifier {
    * @param isQuantized Boolean representing model is quantized or not
    */
   public static SimilarityClassifier create(
-      final AssetManager assetManager,
-      final String modelFilename,
-      final String labelFilename,
-      final int inputSize,
-      final boolean isQuantized,
-      Context context)
+          final AssetManager assetManager,
+          final String modelFilename,
+          final String labelFilename,
+          final int inputSize,
+          final boolean isQuantized,
+          Context context,
+          Map<String,Recognition> map)
       throws IOException {
 
-      final TFLiteObjectDetectionAPIModel d = new TFLiteObjectDetectionAPIModel();
+     TFLiteObjectDetectionAPIModel d = new TFLiteObjectDetectionAPIModel();
+
+
+
+
 
     String actualFilename = labelFilename.split("file:///android_asset/")[1];
     InputStream labelsInput = assetManager.open(actualFilename);
     BufferedReader br = new BufferedReader(new InputStreamReader(labelsInput));
     String line;
+
+    if (map != null){
+      d.registered = map;
+    }
+
+
     while ((line = br.readLine()) != null) {
       LOGGER.w(line);
       d.labels.add(line);
@@ -168,6 +181,7 @@ public class TFLiteObjectDetectionAPIModel implements SimilarityClassifier {
     br.close();
 
     d.inputSize = inputSize;
+
 
     try {
       d.tfLite = new Interpreter(loadModelFile(assetManager, modelFilename));
@@ -200,19 +214,18 @@ public class TFLiteObjectDetectionAPIModel implements SimilarityClassifier {
 
 
   private Pair<String, Float> findNearest(float[] emb) {
-
     Pair<String, Float> ret = null;
 
-
-
-    //todo
-
-
-      registered = powerPreference.getMap("facesMap",structure);
+    registered.clear();
+    registered = PowerPreference.getFileByName("facesHashMap_storage").getMap("facesMap",structure);
 
 
 
-      Log.i("erihgerg","preference:" + powerPreference.getMap("facesMap",structure).values());
+
+
+
+    Log.d("erihgerg","preference:" + PowerPreference.getFileByName("facesHashMap_storage").getMap("facesMap",structure).values());
+    Log.d("erihgerg","preference:" + registered.entrySet());
 
 
 
@@ -250,6 +263,9 @@ public class TFLiteObjectDetectionAPIModel implements SimilarityClassifier {
 
   @Override
   public List<Recognition> recognizeImage(final Bitmap bitmap, boolean storeExtra) {
+
+
+
     // Log this method so that it can be analyzed with systrace.
     Trace.beginSection("recognizeImage");
 
@@ -287,7 +303,7 @@ public class TFLiteObjectDetectionAPIModel implements SimilarityClassifier {
 // Here outputMap is changed to fit the Face Mask detector
     Map<Integer, Object> outputMap = new HashMap<>();
 
-    embeedings = new float[1][OUTPUT_SIZE];
+    float[][] embeedings = new float[1][OUTPUT_SIZE];
     outputMap.put(0, embeedings);
 
 
@@ -304,6 +320,8 @@ public class TFLiteObjectDetectionAPIModel implements SimilarityClassifier {
 
     if (registered.size() > 0) {
 
+      Log.i("akshgwrgwrg","efefef");
+
         final Pair<String, Float> nearest = findNearest(embeedings[0]);
         if (nearest != null) {
 
@@ -315,6 +333,9 @@ public class TFLiteObjectDetectionAPIModel implements SimilarityClassifier {
 
 
         }
+    }else {
+      Log.i("akshgwrgwrg","registered: "+ registered.entrySet());
+
     }
 
 
